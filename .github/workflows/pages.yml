@@ -40,9 +40,6 @@ jobs:
           cp -a stable/. site/
           rm -rf site/.git site/.github
 
-          # Preview starts from the known-good stable app, then adds only
-          # development helper files. This prevents an older/broken HTML
-          # snapshot on the dev branch from becoming the preview page.
           mkdir -p site/preview
           cp stable/index.html site/preview/index.html
           cp stable/exam-paw-grader.html site/preview/exam-paw-grader.html
@@ -52,23 +49,42 @@ jobs:
           cp stable/icon-512.png site/preview/icon-512.png
           cp dev/dev-import.js site/preview/dev-import.js
 
+          # Insert the preview helper ONLY before the final real </body> tag.
+          # The app JavaScript itself contains the literal string </body>
+          # inside workbookXml(), so a global string replacement corrupts
+          # the main <script> block and makes JavaScript appear as page text.
           python3 - <<'PY'
           from pathlib import Path
+          marker = '<script src="./dev-import.js"></script>\n'
           for name in ('index.html', 'exam-paw-grader.html'):
               p = Path('site/preview') / name
               s = p.read_text(encoding='utf-8')
-              if 'dev-import.js' not in s:
-                  s = s.replace('</body>', '<script src="./dev-import.js"></script>\n</body>')
+              if marker.strip() not in s:
+                  pos = s.rfind('</body>')
+                  if pos < 0:
+                      raise SystemExit(f'{name}: final </body> not found')
+                  s = s[:pos] + marker + s[pos:]
               p.write_text(s, encoding='utf-8')
           PY
 
-          echo '--- deployed site files ---'
-          find site -maxdepth 2 -type f -print | sort
+          # Structural checks: exactly one external dev helper reference and
+          # it must occur after the main inline script has closed.
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('index.html', 'exam-paw-grader.html'):
+              s = (Path('site/preview') / name).read_text(encoding='utf-8')
+              ref = '<script src="./dev-import.js"></script>'
+              assert s.count(ref) == 1, f'{name}: unexpected dev helper count'
+              refpos = s.index(ref)
+              last_inline_close = s.rfind('</script>', 0, refpos)
+              assert last_inline_close >= 0, f'{name}: main script close missing'
+              assert refpos > last_inline_close, f'{name}: helper inserted inside main script'
+              assert refpos < s.rfind('</body>'), f'{name}: helper not inside body'
+          PY
+
           test -f site/index.html
           test -f site/preview/index.html
           test -f site/preview/dev-import.js
-          grep -q '<!doctype html>' site/preview/index.html
-          grep -q 'dev-import.js' site/preview/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
