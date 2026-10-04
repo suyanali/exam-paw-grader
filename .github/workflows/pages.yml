@@ -40,22 +40,26 @@ jobs:
           cp -a stable/. site/
           rm -rf site/.git site/.github
 
-          # IMPORTANT: create preview only AFTER copying stable into site.
-          # Otherwise `cp -a stable/. site/` can replace/remove an empty preview directory.
+          # Preview starts from the known-good stable app, then adds only
+          # development helper files. This prevents an older/broken HTML
+          # snapshot on the dev branch from becoming the preview page.
           mkdir -p site/preview
-          cp -a dev/. site/preview/
-          rm -rf site/preview/.git site/preview/.github
+          cp stable/index.html site/preview/index.html
+          cp stable/exam-paw-grader.html site/preview/exam-paw-grader.html
+          cp stable/manifest.webmanifest site/preview/manifest.webmanifest
+          cp stable/service-worker.js site/preview/service-worker.js
+          cp stable/icon-192.png site/preview/icon-192.png
+          cp stable/icon-512.png site/preview/icon-512.png
+          cp dev/dev-import.js site/preview/dev-import.js
 
-          # Inject development-only import helper into preview pages.
           python3 - <<'PY'
           from pathlib import Path
           for name in ('index.html', 'exam-paw-grader.html'):
               p = Path('site/preview') / name
-              if p.exists():
-                  s = p.read_text(encoding='utf-8')
-                  if 'dev-import.js' not in s:
-                      s = s.replace('</body>', '<script src="./dev-import.js"></script>\n</body>')
-                  p.write_text(s, encoding='utf-8')
+              s = p.read_text(encoding='utf-8')
+              if 'dev-import.js' not in s:
+                  s = s.replace('</body>', '<script src="./dev-import.js"></script>\n</body>')
+              p.write_text(s, encoding='utf-8')
           PY
 
           echo '--- deployed site files ---'
@@ -63,6 +67,8 @@ jobs:
           test -f site/index.html
           test -f site/preview/index.html
           test -f site/preview/dev-import.js
+          grep -q '<!doctype html>' site/preview/index.html
+          grep -q 'dev-import.js' site/preview/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
