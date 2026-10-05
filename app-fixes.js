@@ -1,0 +1,76 @@
+(()=>{
+  const RELEASE_VERSION='0.2.2';
+
+  function activeEvents(studentId){
+    return (state.events||[]).filter(e=>e.student_id===studentId&&!e.deleted);
+  }
+  function refreshEventButtons(){
+    if(!currentStudent)return;
+    const activeIds=new Set(activeEvents(currentStudent).map(e=>e.event_id));
+    document.querySelectorAll('#examArea .eventbtn').forEach((btn,idx)=>{
+      const ev=state.eventTypes[idx];
+      const on=!!ev&&activeIds.has(ev.id);
+      btn.classList.toggle('active',on);
+      btn.setAttribute('aria-pressed',on?'true':'false');
+      if(ev) btn.textContent=(on?'✓ ':'')+(ev.icon||'')+' '+(ev.label||'');
+    });
+  }
+
+  const originalRenderStudentScore=window.renderStudentScore;
+  if(typeof originalRenderStudentScore==='function'){
+    window.renderStudentScore=function(){
+      const result=originalRenderStudentScore.apply(this,arguments);
+      refreshEventButtons();
+      return result;
+    };
+  }
+
+  window.toggleEvent=async function(st,eid){
+    const e=state.eventTypes.find(x=>x.id===eid);
+    if(!e)return;
+    const active=state.events.find(x=>x.student_id===st&&x.event_id===eid&&!x.deleted);
+    if(active){
+      active.deleted=true;
+      active.deletedAt=new Date().toISOString();
+      audit('event',st,e.label,'active','deleted');
+    }else{
+      state.events.push({id:uid(),student_id:st,event_id:eid,label:e.label,icon:e.icon,time:new Date().toISOString(),deleted:false});
+      audit('event',st,e.label,null,'active');
+    }
+    await save();
+    window.renderStudentScore();
+  };
+
+  function remarksFor(studentId){
+    return activeEvents(studentId).map(e=>(e.icon?e.icon+' ':'')+(e.label||'')).join('、');
+  }
+
+  window.exportFinalExcel=function(){
+    const headers=['Run','組內順序','學號','姓名'];
+    state.questions.forEach(q=>{
+      q.items.forEach(i=>headers.push(`${q.name}-${i.name}`));
+      headers.push(`${q.name}-總分`);
+    });
+    headers.push('最後平均','備註（特殊事件）');
+    const rows=[headers];
+    [...state.students].sort(sortStudent).forEach(s=>{
+      const r=[s.run,s.order,s.student_id,s.name];
+      state.questions.forEach(q=>{
+        q.items.forEach(i=>r.push(state.scores[s.student_id]?.[q.id]?.[i.id]??''));
+        r.push(questionHasAny(s.student_id,q.id)?questionTotal(s.student_id,q.id):'');
+      });
+      r.push(studentAverage(s.student_id),remarksFor(s.student_id));
+      rows.push(r);
+    });
+    const eventRows=[['時間','Run','組內順序','學號','姓名','事件','狀態']];
+    (state.events||[]).forEach(e=>{
+      const s=state.students.find(x=>x.student_id===e.student_id)||{};
+      eventRows.push([e.time,s.run,s.order,e.student_id,s.name,(e.icon?e.icon+' ':'')+(e.label||''),e.deleted?'已取消':'有效']);
+    });
+    const auditRows=[['時間','學號','類型','欄位','Before','After'],...(state.audit||[]).map(a=>[a.time,a.student_id,a.type,a.field,a.before,a.after])];
+    download('最終成績.xls',workbookXml([{name:'最終成績',rows},{name:'事件紀錄',rows:eventRows},{name:'修改歷程',rows:auditRows}]),'application/vnd.ms-excel');
+  };
+
+  function setVersionBadge(){const b=document.getElementById('versionBadge');if(b)b.textContent='v'+RELEASE_VERSION;}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(setVersionBadge,0));else setTimeout(setVersionBadge,0);
+})();
