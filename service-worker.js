@@ -1,4 +1,4 @@
-const CACHE='exam-paw-grader-v0.2.5';
+const CACHE='exam-paw-grader-v0.2.6';
 const ASSETS=['./','./index.html','./exam-paw-grader.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./dev-import.js','./app-fixes.js','./install.js','./xlsx.full.min.js','./xlsx.zahl.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
