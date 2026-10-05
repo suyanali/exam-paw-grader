@@ -1,6 +1,14 @@
 (()=>{
-  const RELEASE_VERSION='0.2.5';
+  const RELEASE_VERSION='0.2.6';
   if(!document.querySelector('script[data-pwa-install]')){const s=document.createElement('script');s.src='./install.js';s.dataset.pwaInstall='1';document.head.appendChild(s)}
+
+  // iPad/iPhone: rapid repeated taps on controls should not trigger Safari double-tap zoom.
+  const touchStyle=document.createElement('style');
+  touchStyle.textContent='button,.btn,.eventbtn,.score-stepper,.score-buttons{touch-action:manipulation;-webkit-user-select:none;user-select:none}';
+  document.head.appendChild(touchStyle);
+
+  // For scoring items > 5 points, keep ±5 and direct numeric entry, and add ±1 fine adjustment.
+  window.scoreControl=function(st,q,i){let v=state.scores[st]?.[q.id]?.[i.id];let m=+i.max||0;if(m<=5){return `<div class="score-item"><div><b>${esc(i.name)}</b><div class="muted">滿分 ${m}</div></div><div class="score-buttons">${Array.from({length:m+1},(_,n)=>`<button class="${v===n?'sel':''}" onclick="setScore('${st}','${q.id}','${i.id}',${n})">${n}</button>`).join('')}<input class="score-input" type="number" inputmode="decimal" min="0" max="${m}" step="1" value="${v??''}" onchange="setScoreFromInput('${st}','${q.id}','${i.id}',this,${m})"></div></div>`}return `<div class="score-item"><div><b>${esc(i.name)}</b><div class="muted">滿分 ${m}</div></div><div class="score-stepper"><button onclick="stepScore('${st}','${q.id}','${i.id}',-5,${m})">−5</button><button onclick="stepScore('${st}','${q.id}','${i.id}',-1,${m})">−1</button><input class="score-input" type="number" inputmode="decimal" min="0" max="${m}" step="1" value="${v??''}" placeholder="—" onchange="setScoreFromInput('${st}','${q.id}','${i.id}',this,${m})"><button onclick="stepScore('${st}','${q.id}','${i.id}',1,${m})">+1</button><button onclick="stepScore('${st}','${q.id}','${i.id}',5,${m})">+5</button><button onclick="setScore('${st}','${q.id}','${i.id}',0)">0</button><button onclick="setScore('${st}','${q.id}','${i.id}',${m})">滿分</button></div></div>`};
 
   function activeEvents(studentId){return (state.events||[]).filter(e=>e.student_id===studentId&&!e.deleted)}
   function refreshEventButtons(){if(!currentStudent)return;const activeIds=new Set(activeEvents(currentStudent).map(e=>e.event_id));document.querySelectorAll('#examArea .eventbtn').forEach((btn,idx)=>{const ev=state.eventTypes[idx];const on=!!ev&&activeIds.has(ev.id);btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');if(ev)btn.textContent=(on?'✓ ':'')+(ev.icon||'')+' '+(ev.label||'')})}
