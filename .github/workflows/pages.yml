@@ -40,6 +40,27 @@ jobs:
           cp -a stable/. site/
           rm -rf site/.git site/.github
 
+          # Vendor SheetJS into the deployed site so XLSX/XLS/Numbers import
+          # continues to work after the PWA has been installed and is offline.
+          curl -fL --retry 3 -o site/xlsx.full.min.js https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js
+          curl -fL --retry 3 -o site/xlsx.zahl.js https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.zahl.js
+
+          # Stable main uses the released spreadsheet-import helper.
+          python3 - <<'PY'
+          from pathlib import Path
+          marker = '<script src="./dev-import.js"></script>\n'
+          for name in ('index.html', 'exam-paw-grader.html'):
+              p = Path('site') / name
+              s = p.read_text(encoding='utf-8')
+              if marker.strip() not in s:
+                  pos = s.rfind('</body>')
+                  if pos < 0: raise SystemExit(f'{name}: final </body> not found')
+                  s = s[:pos] + marker + s[pos:]
+              p.write_text(s, encoding='utf-8')
+          PY
+
+          # Preview is assembled from known-good stable HTML plus the current
+          # development helper. It gets its own local SheetJS copies.
           mkdir -p site/preview
           cp stable/index.html site/preview/index.html
           cp stable/exam-paw-grader.html site/preview/exam-paw-grader.html
@@ -48,11 +69,9 @@ jobs:
           cp stable/icon-192.png site/preview/icon-192.png
           cp stable/icon-512.png site/preview/icon-512.png
           cp dev/dev-import.js site/preview/dev-import.js
+          cp site/xlsx.full.min.js site/preview/xlsx.full.min.js
+          cp site/xlsx.zahl.js site/preview/xlsx.zahl.js
 
-          # Insert the preview helper ONLY before the final real </body> tag.
-          # The app JavaScript itself contains the literal string </body>
-          # inside workbookXml(), so a global string replacement corrupts
-          # the main <script> block and makes JavaScript appear as page text.
           python3 - <<'PY'
           from pathlib import Path
           marker = '<script src="./dev-import.js"></script>\n'
@@ -61,28 +80,25 @@ jobs:
               s = p.read_text(encoding='utf-8')
               if marker.strip() not in s:
                   pos = s.rfind('</body>')
-                  if pos < 0:
-                      raise SystemExit(f'{name}: final </body> not found')
+                  if pos < 0: raise SystemExit(f'{name}: final </body> not found')
                   s = s[:pos] + marker + s[pos:]
               p.write_text(s, encoding='utf-8')
           PY
 
-          # Structural checks: exactly one external dev helper reference and
-          # it must occur after the main inline script has closed.
           python3 - <<'PY'
           from pathlib import Path
-          for name in ('index.html', 'exam-paw-grader.html'):
-              s = (Path('site/preview') / name).read_text(encoding='utf-8')
-              ref = '<script src="./dev-import.js"></script>'
-              assert s.count(ref) == 1, f'{name}: unexpected dev helper count'
-              refpos = s.index(ref)
-              last_inline_close = s.rfind('</script>', 0, refpos)
-              assert last_inline_close >= 0, f'{name}: main script close missing'
-              assert refpos > last_inline_close, f'{name}: helper inserted inside main script'
-              assert refpos < s.rfind('</body>'), f'{name}: helper not inside body'
+          for base in (Path('site'), Path('site/preview')):
+              for name in ('index.html', 'exam-paw-grader.html'):
+                  s=(base/name).read_text(encoding='utf-8')
+                  ref='<script src="./dev-import.js"></script>'
+                  assert s.count(ref)==1, f'{base}/{name}: helper count'
+                  refpos=s.index(ref)
+                  assert refpos > s.rfind('</script>',0,refpos), f'{base}/{name}: helper inside main script'
+                  assert refpos < s.rfind('</body>'), f'{base}/{name}: helper outside body'
           PY
 
-          test -f site/index.html
+          test -s site/xlsx.full.min.js
+          test -s site/xlsx.zahl.js
           test -f site/preview/index.html
           test -f site/preview/dev-import.js
 
